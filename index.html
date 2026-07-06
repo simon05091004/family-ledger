@@ -331,12 +331,21 @@ const FireStore = {
   },
   remove(id){ if (this.user) this.col().doc(id).delete(); },
   toggleAuth(){
-    if (this.user) firebase.auth().signOut();
-    else firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e => alert('登入失敗：' + e.message));
+    if (this.user) { firebase.auth().signOut(); return; }
+    if (inAppBrowser()){
+      alert('偵測到您在 LINE 或其他 App 的內建瀏覽器中，Google 會封鎖登入。\n\n請點選右下角「⋯」選單 →「使用預設瀏覽器開啟」，再進行登入。');
+      return;
+    }
+    firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e => alert('登入失敗：' + e.message));
   }
 };
 
 function setStatus(t){ $('sync-status').innerHTML = '資料儲存：<b>' + t + '</b>'; }
+
+/* App 內建瀏覽器偵測（LINE / FB / IG 會封鎖 Google 登入） */
+function inAppBrowser(){
+  return /Line\/|FBAN|FBAV|FB_IAB|Instagram|MicroMessenger/i.test(navigator.userAgent || '');
+}
 
 /* ── 計算 ─────────────────────────── */
 function monthRecords(month){
@@ -651,6 +660,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (FIREBASE_CONFIG){
     store = FireStore;
     $('btn-auth').addEventListener('click', () => FireStore.toggleAuth());
+    if (inAppBrowser()) setStatus('⚠️ 請改用 Safari / Chrome 開啟，LINE 內建瀏覽器無法登入');
   } else {
     store = LocalStore;
     $('btn-auth').style.display = 'none';
