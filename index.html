@@ -129,9 +129,14 @@ td.amt{font-family:'Noto Serif TC',serif;font-weight:700;text-align:right;white-
   .form-grid{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ── 內建瀏覽器提示 ────────────────── */
+#webview-banner{display:none;background:#B3402E;color:#fff;padding:12px 16px;font-size:14px;text-align:center}
+#webview-banner a{color:#FFE3A8;font-weight:700}
 </style>
 </head>
 <body>
+<div id="webview-banner"></div>
 <header>
   <div class="header-inner">
     <div class="brand">
@@ -609,6 +614,22 @@ function shiftMonth(d){
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // 偵測 App 內建瀏覽器（Google 封鎖 WebView 登入）
+  const ua = navigator.userAgent || '';
+  const isLine = / Line\//i.test(ua) || /\bLine\b/i.test(ua);
+  const isOtherWebview = /FBAN|FBAV|Instagram|MicroMessenger|GSA\//i.test(ua);
+  if (isLine || isOtherWebview){
+    const banner = $('webview-banner');
+    if (isLine){
+      const url = new URL(location.href);
+      url.searchParams.set('openExternalBrowser', '1');
+      banner.innerHTML = '⚠️ LINE 內建瀏覽器無法使用 Google 登入，<a href="' + url.href + '">點此用外部瀏覽器開啟</a>';
+    } else {
+      banner.textContent = '⚠️ App 內建瀏覽器無法使用 Google 登入，請點右上角選單改用 Chrome 或 Safari 開啟本頁';
+    }
+    banner.style.display = 'block';
+  }
+
   $('month-picker').value = currentMonth;
   $('f-date').value = new Date().toISOString().slice(0,10);
   fillSelect($('f-account'), ACCOUNTS);
