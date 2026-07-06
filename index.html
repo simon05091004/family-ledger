@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>家庭記帳系統</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  --ink:#17352A;          /* 深帳本綠 */
+  --ink-soft:#2C5445;
+  --paper:#FAFAF7;        /* 紙白 */
+  --card:#FFFFFF;
+  --line:#E3E2DA;
+  --expense:#B3402E;      /* 支出紅 */
+  --income:#22694F;       /* 收入綠 */
+  --transfer:#8A6D2F;     /* 轉帳金 */
+  --muted:#6E7A73;
+  --gold:#C9A24B;
+  --radius:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--paper);color:#22302A;font-family:'Noto Sans TC',sans-serif;font-size:15px;line-height:1.6}
+button{font-family:inherit;cursor:pointer}
+input,select{font-family:inherit;font-size:14px}
+
+/* ── 頁首 ─────────────────────────── */
+header{background:var(--ink);color:#F2EFE6;padding:18px 20px 14px}
+.header-inner{max-width:1080px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.brand h1{font-family:'Noto Serif TC',serif;font-weight:900;font-size:22px;letter-spacing:.12em}
+.brand .sub{font-size:12px;letter-spacing:.3em;color:#B8C6BE}
+.header-spacer{flex:1}
+.month-nav{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:4px 8px}
+.month-nav button{background:none;border:none;color:#F2EFE6;font-size:16px;padding:2px 8px;border-radius:999px}
+.month-nav button:hover{background:rgba(255,255,255,.12)}
+.month-nav input[type=month]{background:transparent;border:none;color:#F2EFE6;font-size:15px;font-weight:500;outline:none;color-scheme:dark}
+.export-group{display:flex;gap:8px}
+.btn{border-radius:8px;border:1px solid transparent;padding:8px 14px;font-size:14px;font-weight:500;transition:filter .15s}
+.btn:hover{filter:brightness(1.08)}
+.btn-gold{background:var(--gold);color:#2A230F;border-color:#B08D3B}
+.btn-outline{background:transparent;color:#F2EFE6;border-color:rgba(255,255,255,.4)}
+.sync-status{font-size:12px;color:#B8C6BE;width:100%;text-align:right;margin-top:4px}
+.sync-status b{color:#E8D9A8;font-weight:500}
+
+main{max-width:1080px;margin:0 auto;padding:20px 16px 60px}
+section{margin-bottom:28px}
+h2{font-family:'Noto Serif TC',serif;font-size:17px;color:var(--ink);letter-spacing:.08em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+h2::after{content:"";flex:1;height:1px;background:var(--line)}
+
+/* ── 本月摘要 ─────────────────────── */
+.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.sum-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+.sum-card .label{font-size:12px;letter-spacing:.2em;color:var(--muted)}
+.sum-card .value{font-family:'Noto Serif TC',serif;font-size:26px;font-weight:700;margin-top:2px}
+.v-income{color:var(--income)} .v-expense{color:var(--expense)} .v-net{color:var(--ink)}
+
+/* ── 存摺帳戶卡 ───────────────────── */
+.accounts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.passbook{position:relative;background:
+  repeating-linear-gradient(180deg,#FFFFFF 0 26px,#F4F2EA 26px 27px);
+  border:1px solid var(--line);border-top:6px solid var(--ink);border-radius:var(--radius);
+  padding:14px 16px 12px;overflow:hidden}
+.passbook.acc-edu{border-top-color:#1F5C8B}
+.passbook.acc-travel{border-top-color:#8A6D2F}
+.passbook.acc-retire{border-top-color:#6B3FA0}
+.passbook .acc-name{font-family:'Noto Serif TC',serif;font-weight:700;font-size:15px;color:var(--ink);letter-spacing:.15em}
+.passbook .acc-balance{font-family:'Noto Serif TC',serif;font-size:22px;font-weight:900;margin-top:8px;color:#22302A}
+.passbook .acc-month{font-size:12px;color:var(--muted);margin-top:2px}
+.passbook .stamp{position:absolute;right:10px;top:10px;font-size:10px;color:rgba(179,64,46,.55);border:1.5px solid rgba(179,64,46,.45);border-radius:50%;width:38px;height:38px;display:flex;align-items:center;justify-content:center;transform:rotate(-12deg);letter-spacing:.1em}
+
+/* ── 新增表單 ─────────────────────── */
+.entry-form{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.form-grid{display:grid;grid-template-columns:110px 96px 1fr 1fr 130px 1fr auto;gap:10px;align-items:end}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;letter-spacing:.1em}
+.field input,.field select{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff}
+.field input:focus,.field select:focus{outline:2px solid var(--ink-soft);outline-offset:0;border-color:var(--ink-soft)}
+.kind-toggle{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.kind-toggle button{flex:1;border:none;background:#fff;padding:8px 0;font-size:14px;color:var(--muted)}
+.kind-toggle button.on-income{background:var(--income);color:#fff}
+.kind-toggle button.on-expense{background:var(--expense);color:#fff}
+.kind-toggle button.on-transfer{background:var(--transfer);color:#fff}
+.btn-add{background:var(--ink);color:#F2EFE6;padding:9px 20px;border-radius:8px;border:none;font-size:15px}
+.btn-add:hover{background:var(--ink-soft)}
+
+/* ── 明細表 ──────────────────────── */
+.table-wrap{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:auto}
+table{width:100%;border-collapse:collapse;min-width:680px}
+th{font-size:12px;letter-spacing:.15em;color:var(--muted);font-weight:500;text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);background:#FCFBF7}
+td{padding:9px 14px;border-bottom:1px solid #F0EFE8;font-size:14px}
+tr:last-child td{border-bottom:none}
+td.amt{font-family:'Noto Serif TC',serif;font-weight:700;text-align:right;white-space:nowrap}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.k-income{color:var(--income)} .k-expense{color:var(--expense)} .k-transfer{color:var(--transfer)}
+.del-btn{background:none;border:none;color:#C4C1B6;font-size:15px;padding:2px 6px;border-radius:6px}
+.del-btn:hover{color:var(--expense);background:#FBEFEC}
+.empty{padding:28px;text-align:center;color:var(--muted);font-size:14px}
+
+/* ── 圖表 ────────────────────────── */
+.charts{display:grid;grid-template-columns:1.4fr 1fr;gap:12px}
+.chart-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+.chart-card h3{font-size:14px;color:var(--ink);font-weight:500;letter-spacing:.1em;margin-bottom:8px}
+.chart-card canvas{width:100%!important;max-height:280px}
+.chart-full{grid-column:1/-1}
+
+/* ── PDF 報表（隱藏，僅供輸出） ────── */
+#pdf-report{position:absolute;left:-9999px;top:0;width:760px;background:#fff;padding:32px;font-family:'Noto Sans TC',sans-serif}
+#pdf-report h1{font-family:'Noto Serif TC',serif;font-size:22px;color:var(--ink);letter-spacing:.15em;border-bottom:2px solid var(--ink);padding-bottom:8px;margin-bottom:14px}
+#pdf-report .pr-sum{display:flex;gap:20px;margin-bottom:14px;font-size:14px}
+#pdf-report .pr-sum b{font-family:'Noto Serif TC',serif;font-size:18px}
+#pdf-report table{min-width:0;width:100%}
+#pdf-report img{width:100%;margin:8px 0}
+
+@media (max-width:860px){
+  .summary{grid-template-columns:repeat(3,1fr)}
+  .accounts{grid-template-columns:repeat(2,1fr)}
+  .form-grid{grid-template-columns:1fr 1fr}
+  .charts{grid-template-columns:1fr}
+}
+@media (max-width:520px){
+  .summary{grid-template-columns:1fr}
+  .form-grid{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <h1>家庭記帳簿</h1>
+      <div class="sub">FAMILY LEDGER</div>
+    </div>
+    <div class="header-spacer"></div>
+    <div class="month-nav">
+      <button id="prev-month" aria-label="上一月">‹</button>
+      <input type="month" id="month-picker">
+      <button id="next-month" aria-label="下一月">›</button>
+    </div>
+    <div class="export-group">
+      <button class="btn btn-gold" id="btn-xlsx">匯出 Excel</button>
+      <button class="btn btn-gold" id="btn-pdf">匯出 PDF</button>
+      <button class="btn btn-outline" id="btn-auth">登入</button>
+    </div>
+    <div class="sync-status" id="sync-status">資料儲存：<b>載入中…</b></div>
+  </div>
+</header>
+
+<main>
+  <section>
+    <h2>本月摘要</h2>
+    <div class="summary">
+      <div class="sum-card"><div class="label">收入</div><div class="value v-income" id="sum-income">$0</div></div>
+      <div class="sum-card"><div class="label">支出</div><div class="value v-expense" id="sum-expense">$0</div></div>
+      <div class="sum-card"><div class="label">結餘</div><div class="value v-net" id="sum-net">$0</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>帳戶存摺</h2>
+    <div class="accounts" id="accounts"></div>
+  </section>
+
+  <section>
+    <h2>新增記錄</h2>
+    <div class="entry-form">
+      <div class="form-grid">
+        <div class="field">
+          <label for="f-date">日期</label>
+          <input type="date" id="f-date">
+        </div>
+        <div class="field">
+          <label>類型</label>
+          <div class="kind-toggle" id="kind-toggle">
+            <button type="button" data-kind="income">收入</button>
+            <button type="button" data-kind="expense">支出</button>
+            <button type="button" data-kind="transfer">轉帳</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-account" id="lbl-account">帳戶</label>
+          <select id="f-account"></select>
+        </div>
+        <div class="field" id="wrap-to" style="display:none">
+          <label for="f-to">轉入帳戶</label>
+          <select id="f-to"></select>
+        </div>
+        <div class="field" id="wrap-cat">
+          <label for="f-category">分類</label>
+          <select id="f-category"></select>
+        </div>
+        <div class="field">
+          <label for="f-amount">金額（元）</label>
+          <input type="number" id="f-amount" min="1" step="1" placeholder="0">
+        </div>
+        <div class="field">
+          <label for="f-note">備註</label>
+          <input type="text" id="f-note" placeholder="選填">
+        </div>
+        <button class="btn-add" id="btn-add">記一筆</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>本月明細</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>日期</th><th>類型</th><th>帳戶</th><th>分類</th><th>備註</th><th style="text-align:right">金額</th><th></th></tr></thead>
+        <tbody id="record-body"></tbody>
+      </table>
+      <div class="empty" id="record-empty" style="display:none">本月尚無記錄，從上方「記一筆」開始。</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>圖表分析</h2>
+    <div class="charts">
+      <div class="chart-card chart-full"><h3>近 12 個月收支趨勢</h3><canvas id="chart-trend" height="120"></canvas></div>
+      <div class="chart-card"><h3>本月支出分類</h3><canvas id="chart-cat"></canvas></div>
+      <div class="chart-card"><h3>帳戶餘額</h3><canvas id="chart-acc"></canvas></div>
+    </div>
+  </section>
+</main>
+
+<div id="pdf-report"></div>
+<script>
+/* ═══════════════════════════════════════════════════════════
+   Firebase 設定（選用）
+   1. 到 https://console.firebase.google.com 建立專案
+   2. 啟用 Authentication → Google 登入
+   3. 建立 Cloud Firestore（正式模式），安全規則設定：
+        match /users/{uid}/{document=**} {
+          allow read, write: if request.auth != null && request.auth.uid == uid;
+        }
+   4. 將專案設定中的 firebaseConfig 貼到下方，取代 null
+   未設定時，系統自動改用「本機儲存」模式（資料存在此瀏覽器）。
+   ═══════════════════════════════════════════════════════════ */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCp72sOo1c75i22m9FD_UQzPb9ApofE0bw",
+  authDomain: "family-ledger-e196d.firebaseapp.com",
+  projectId: "family-ledger-e196d",
+  storageBucket: "family-ledger-e196d.firebasestorage.app",
+  messagingSenderId: "931315534107",
+  appId: "1:931315534107:web:68aa8419d1d0b47948abbe"
+};
+
+/* ── 常數 ─────────────────────────── */
+const ACCOUNTS = ['日常帳戶','教育基金','旅行帳戶','退休帳戶'];
+const ACC_CLASS = {'日常帳戶':'acc-daily','教育基金':'acc-edu','旅行帳戶':'acc-travel','退休帳戶':'acc-retire'};
+const CATEGORIES = {
+  income:  ['薪資','獎金','利息投資','其他收入'],
+  expense: ['飲食','交通','居住','教育','醫療','娛樂','旅行支出','保險','寵物(貓咪)','其他支出']
+};
+const KIND_LABEL = {income:'收入', expense:'支出', transfer:'轉帳'};
+
+/* ── 狀態 ─────────────────────────── */
+let records = [];            // {id, date, kind, account, toAccount, category, amount, note}
+let currentMonth = new Date().toISOString().slice(0,7);
+let currentKind = 'expense';
+let store = null;
+
+const $ = id => document.getElementById(id);
+const fmt = n => '$' + Math.round(n).toLocaleString('zh-TW');
+const signedFmt = n => (n < 0 ? '-' : '') + fmt(Math.abs(n));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+
+/* ── 儲存層：本機模式 ──────────────── */
+const LocalStore = {
+  key: 'family-ledger-records',
+  mem: null,
+  init(onData){
+    this.onData = onData;
+    let data = [];
+    try { data = JSON.parse(localStorage.getItem(this.key) || '[]'); }
+    catch(e){ this.mem = []; data = []; }
+    onData(data);
+    setStatus('本機儲存（僅此瀏覽器）');
+  },
+  _save(list){
+    try { localStorage.setItem(this.key, JSON.stringify(list)); }
+    catch(e){ this.mem = list; }
+  },
+  add(rec){ const list = records.concat([rec]); this._save(list); this.onData(list); },
+  remove(id){ const list = records.filter(r => r.id !== id); this._save(list); this.onData(list); }
+};
+
+/* ── 儲存層：Firebase 模式 ─────────── */
+const FireStore = {
+  db: null, user: null, unsub: null,
+  init(onData){
+    this.onData = onData;
+    firebase.initializeApp(FIREBASE_CONFIG);
+    this.db = firebase.firestore();
+    $('btn-auth').style.display = '';
+    firebase.auth().onAuthStateChanged(u => {
+      this.user = u;
+      if (this.unsub) { this.unsub(); this.unsub = null; }
+      if (u) {
+        $('btn-auth').textContent = '登出（' + (u.displayName || '使用者') + '）';
+        setStatus('雲端同步中 · ' + (u.email || ''));
+        this.unsub = this.col().onSnapshot(snap => {
+          const list = [];
+          snap.forEach(d => list.push(Object.assign({id: d.id}, d.data())));
+          onData(list);
+        });
+      } else {
+        $('btn-auth').textContent = '使用 Google 登入';
+        setStatus('尚未登入，請先登入以同步資料');
+        onData([]);
+      }
+    });
+  },
+  col(){ return this.db.collection('users').doc(this.user.uid).collection('records'); },
+  add(rec){
+    if (!this.user) { alert('請先登入'); return; }
+    const data = Object.assign({}, rec); delete data.id;
+    this.col().doc(rec.id).set(data);
+  },
+  remove(id){ if (this.user) this.col().doc(id).delete(); },
+  toggleAuth(){
+    if (this.user) firebase.auth().signOut();
+    else firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e => alert('登入失敗：' + e.message));
+  }
+};
+
+function setStatus(t){ $('sync-status').innerHTML = '資料儲存：<b>' + t + '</b>'; }
+
+/* ── 計算 ─────────────────────────── */
+function monthRecords(month){
+  return records.filter(r => r.date && r.date.startsWith(month))
+                .sort((a,b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+}
+function monthTotals(month){
+  let inc = 0, exp = 0;
+  for (const r of monthRecords(month)){
+    if (r.kind === 'income') inc += r.amount;
+    else if (r.kind === 'expense') exp += r.amount;
+  }
+  return {inc, exp, net: inc - exp};
+}
+function accountBalances(){
+  const bal = {}; ACCOUNTS.forEach(a => bal[a] = 0);
+  for (const r of records){
+    if (r.kind === 'income') bal[r.account] = (bal[r.account]||0) + r.amount;
+    else if (r.kind === 'expense') bal[r.account] = (bal[r.account]||0) - r.amount;
+    else if (r.kind === 'transfer'){
+      bal[r.account] = (bal[r.account]||0) - r.amount;
+      bal[r.toAccount] = (bal[r.toAccount]||0) + r.amount;
+    }
+  }
+  return bal;
+}
+function accountMonthChange(month){
+  const chg = {}; ACCOUNTS.forEach(a => chg[a] = 0);
+  for (const r of monthRecords(month)){
+    if (r.kind === 'income') chg[r.account] += r.amount;
+    else if (r.kind === 'expense') chg[r.account] -= r.amount;
+    else if (r.kind === 'transfer'){ chg[r.account] -= r.amount; chg[r.toAccount] += r.amount; }
+  }
+  return chg;
+}
+function last12Months(){
+  const arr = [], d = new Date(currentMonth + '-01T00:00:00');
+  for (let i = 11; i >= 0; i--){
+    const m = new Date(d.getFullYear(), d.getMonth() - i, 1);
+    arr.push(m.getFullYear() + '-' + String(m.getMonth()+1).padStart(2,'0'));
+  }
+  return arr;
+}
+
+/* ── 畫面渲染 ─────────────────────── */
+function render(){
+  const t = monthTotals(currentMonth);
+  $('sum-income').textContent = fmt(t.inc);
+  $('sum-expense').textContent = fmt(t.exp);
+  $('sum-net').textContent = signedFmt(t.net);
+  $('sum-net').style.color = t.net < 0 ? 'var(--expense)' : 'var(--ink)';
+  renderAccounts();
+  renderTable();
+  renderCharts();
+}
+
+function renderAccounts(){
+  const bal = accountBalances(), chg = accountMonthChange(currentMonth);
+  $('accounts').innerHTML = ACCOUNTS.map(a => {
+    const c = chg[a];
+    const chgTxt = c === 0 ? '本月無變動' : '本月 ' + (c > 0 ? '+' : '−') + fmt(Math.abs(c)).slice(1) + ' 元';
+    return '<div class="passbook ' + (ACC_CLASS[a]||'') + '">' +
+      '<div class="stamp">結存</div>' +
+      '<div class="acc-name">' + a + '</div>' +
+      '<div class="acc-balance">' + signedFmt(bal[a]) + '</div>' +
+      '<div class="acc-month">' + chgTxt + '</div></div>';
+  }).join('');
+}
+
+function renderTable(){
+  const list = monthRecords(currentMonth);
+  $('record-empty').style.display = list.length ? 'none' : '';
+  $('record-body').innerHTML = list.map(r => {
+    const accTxt = r.kind === 'transfer' ? r.account + ' → ' + r.toAccount : r.account;
+    const catTxt = r.kind === 'transfer' ? '帳戶轉帳' : r.category;
+    const sign = r.kind === 'income' ? '+' : r.kind === 'expense' ? '−' : '';
+    return '<tr>' +
+      '<td>' + r.date.slice(5).replace('-','/') + '</td>' +
+      '<td class="k-' + r.kind + '">' + KIND_LABEL[r.kind] + '</td>' +
+      '<td><span class="tag">' + accTxt + '</span></td>' +
+      '<td>' + catTxt + '</td>' +
+      '<td style="color:var(--muted)">' + (r.note ? escapeHtml(r.note) : '') + '</td>' +
+      '<td class="amt k-' + r.kind + '">' + sign + fmt(r.amount).slice(1) + '</td>' +
+      '<td><button class="del-btn" data-del="' + r.id + '" title="刪除">✕</button></td></tr>';
+  }).join('');
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ── 圖表 ─────────────────────────── */
+let chTrend = null, chCat = null, chAcc = null;
+Chart.defaults.font.family = "'Noto Sans TC', sans-serif";
+Chart.defaults.color = '#6E7A73';
+
+function renderCharts(){
+  const months = last12Months();
+  const incData = months.map(m => monthTotals(m).inc);
+  const expData = months.map(m => monthTotals(m).exp);
+  const labels = months.map(m => m.slice(0,4) + '/' + m.slice(5));
+
+  if (chTrend) chTrend.destroy();
+  chTrend = new Chart($('chart-trend'), {
+    type: 'bar',
+    data: { labels, datasets: [
+      {label:'收入', data:incData, backgroundColor:'#22694F', borderRadius:3},
+      {label:'支出', data:expData, backgroundColor:'#B3402E', borderRadius:3}
+    ]},
+    options: { responsive:true, plugins:{legend:{position:'bottom'}},
+      scales:{ y:{ ticks:{ callback:v => v.toLocaleString('zh-TW') }, grid:{color:'#EFEEE6'} }, x:{grid:{display:false}} } }
+  });
+
+  const catSum = {};
+  for (const r of monthRecords(currentMonth)) if (r.kind === 'expense')
+    catSum[r.category] = (catSum[r.category]||0) + r.amount;
+  const catLabels = Object.keys(catSum), catData = catLabels.map(k => catSum[k]);
+  if (chCat) chCat.destroy();
+  chCat = new Chart($('chart-cat'), {
+    type: 'doughnut',
+    data: { labels: catLabels.length ? catLabels : ['（無支出）'],
+      datasets: [{ data: catData.length ? catData : [1],
+        backgroundColor: catData.length ?
+          ['#B3402E','#C9A24B','#22694F','#1F5C8B','#6B3FA0','#8A6D2F','#4E6E63','#A85D3C','#7C8A6E','#5B4A3F'] : ['#E3E2DA'],
+        borderColor:'#fff', borderWidth:2 }]},
+    options: { plugins:{legend:{position:'bottom'}}, cutout:'55%' }
+  });
+
+  const bal = accountBalances();
+  if (chAcc) chAcc.destroy();
+  chAcc = new Chart($('chart-acc'), {
+    type: 'bar',
+    data: { labels: ACCOUNTS, datasets: [{ data: ACCOUNTS.map(a => bal[a]),
+      backgroundColor:['#17352A','#1F5C8B','#8A6D2F','#6B3FA0'], borderRadius:4 }]},
+    options: { indexAxis:'y', plugins:{legend:{display:false}},
+      scales:{ x:{ ticks:{ callback:v => v.toLocaleString('zh-TW') }, grid:{color:'#EFEEE6'} }, y:{grid:{display:false}} } }
+  });
+}
+
+/* ── 匯出 Excel ───────────────────── */
+function exportXlsx(){
+  const wb = XLSX.utils.book_new();
+
+  const detail = [['日期','類型','帳戶','轉入帳戶','分類','金額','備註']];
+  records.slice().sort((a,b) => a.date < b.date ? -1 : 1).forEach(r => {
+    detail.push([r.date, KIND_LABEL[r.kind], r.account, r.kind==='transfer' ? r.toAccount : '',
+      r.kind==='transfer' ? '帳戶轉帳' : r.category, r.amount, r.note || '']);
+  });
+  const ws1 = XLSX.utils.aoa_to_sheet(detail);
+  ws1['!cols'] = [{wch:12},{wch:6},{wch:10},{wch:10},{wch:10},{wch:10},{wch:24}];
+  XLSX.utils.book_append_sheet(wb, ws1, '收支明細');
+
+  const monthsSet = [...new Set(records.map(r => r.date.slice(0,7)))].sort();
+  const summary = [['月份','收入','支出','結餘']];
+  monthsSet.forEach(m => { const t = monthTotals(m); summary.push([m, t.inc, t.exp, t.net]); });
+  const ws2 = XLSX.utils.aoa_to_sheet(summary);
+  ws2['!cols'] = [{wch:10},{wch:12},{wch:12},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws2, '月度彙總');
+
+  const bal = accountBalances();
+  const accSheet = [['帳戶','目前餘額']];
+  ACCOUNTS.forEach(a => accSheet.push([a, bal[a]]));
+  const ws3 = XLSX.utils.aoa_to_sheet(accSheet);
+  ws3['!cols'] = [{wch:12},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, ws3, '帳戶餘額');
+
+  XLSX.writeFile(wb, '家庭記帳報表_' + currentMonth + '.xlsx');
+}
+
+/* ── 匯出 PDF ─────────────────────── */
+async function exportPdf(){
+  const btn = $('btn-pdf'); btn.disabled = true; btn.textContent = '產生中…';
+  try{
+    const t = monthTotals(currentMonth);
+    const bal = accountBalances();
+    const [y, m] = currentMonth.split('-');
+    const list = monthRecords(currentMonth);
+
+    let html = '<h1>家庭記帳月報 ' + y + ' 年 ' + Number(m) + ' 月</h1>';
+    html += '<div class="pr-sum">' +
+      '<div>收入 <b style="color:#22694F">' + fmt(t.inc) + '</b></div>' +
+      '<div>支出 <b style="color:#B3402E">' + fmt(t.exp) + '</b></div>' +
+      '<div>結餘 <b>' + signedFmt(t.net) + '</b></div></div>';
+
+    html += '<table><thead><tr><th>帳戶</th><th style="text-align:right">目前餘額</th></tr></thead><tbody>';
+    ACCOUNTS.forEach(a => { html += '<tr><td>' + a + '</td><td class="amt">' + signedFmt(bal[a]) + '</td></tr>'; });
+    html += '</tbody></table>';
+
+    if (chTrend) html += '<img src="' + chTrend.toBase64Image() + '">';
+    if (chCat && monthRecords(currentMonth).some(r => r.kind==='expense'))
+      html += '<img style="width:60%;display:block;margin:8px auto" src="' + chCat.toBase64Image() + '">';
+
+    html += '<table><thead><tr><th>日期</th><th>類型</th><th>帳戶</th><th>分類</th><th>備註</th><th style="text-align:right">金額</th></tr></thead><tbody>';
+    if (list.length){
+      list.forEach(r => {
+        const accTxt = r.kind==='transfer' ? r.account + ' → ' + r.toAccount : r.account;
+        html += '<tr><td>' + r.date + '</td><td>' + KIND_LABEL[r.kind] + '</td><td>' + accTxt + '</td>' +
+          '<td>' + (r.kind==='transfer' ? '帳戶轉帳' : r.category) + '</td><td>' + (r.note ? escapeHtml(r.note) : '') + '</td>' +
+          '<td class="amt">' + fmt(r.amount) + '</td></tr>';
+      });
+    } else html += '<tr><td colspan="6" style="text-align:center;color:#888">本月無記錄</td></tr>';
+    html += '</tbody></table>';
+
+    const box = $('pdf-report');
+    box.innerHTML = html;
+    const canvas = await html2canvas(box, {scale: 2, backgroundColor: '#ffffff'});
+    box.innerHTML = '';
+
+    const pdf = new jspdf.jsPDF('p', 'mm', 'a4');
+    const pageW = 210, pageH = 297, margin = 10;
+    const imgW = pageW - margin * 2;
+    const imgH = canvas.height * imgW / canvas.width;
+    const pageInnerH = pageH - margin * 2;
+    let rendered = 0, page = 0;
+    while (rendered < imgH){
+      if (page > 0) pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', margin, margin - rendered, imgW, imgH);
+      // 蓋住溢出頁面邊界的部分
+      pdf.setFillColor(255,255,255);
+      pdf.rect(0, 0, pageW, margin, 'F');
+      pdf.rect(0, pageH - margin, pageW, margin, 'F');
+      rendered += pageInnerH;
+      page++;
+    }
+    pdf.save('家庭記帳月報_' + currentMonth + '.pdf');
+  } catch(e){
+    alert('PDF 產生失敗：' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '匯出 PDF';
+  }
+}
+
+/* ── 表單邏輯 ─────────────────────── */
+function fillSelect(sel, items){
+  sel.innerHTML = items.map(i => '<option value="' + i + '">' + i + '</option>').join('');
+}
+function setKind(k){
+  currentKind = k;
+  document.querySelectorAll('#kind-toggle button').forEach(b => {
+    b.className = b.dataset.kind === k ? 'on-' + k : '';
+  });
+  const isTransfer = k === 'transfer';
+  $('wrap-to').style.display = isTransfer ? '' : 'none';
+  $('wrap-cat').style.display = isTransfer ? 'none' : '';
+  $('lbl-account').textContent = isTransfer ? '轉出帳戶' : '帳戶';
+  if (!isTransfer) fillSelect($('f-category'), CATEGORIES[k]);
+}
+function addRecord(){
+  const date = $('f-date').value;
+  const amount = Number($('f-amount').value);
+  if (!date) { alert('請選擇日期'); return; }
+  if (!amount || amount <= 0) { alert('請輸入正確金額'); return; }
+  const rec = {
+    id: uid(), date, kind: currentKind,
+    account: $('f-account').value,
+    toAccount: currentKind === 'transfer' ? $('f-to').value : '',
+    category: currentKind === 'transfer' ? '轉帳' : $('f-category').value,
+    amount, note: $('f-note').value.trim()
+  };
+  if (rec.kind === 'transfer' && rec.account === rec.toAccount){
+    alert('轉出與轉入帳戶不可相同'); return;
+  }
+  store.add(rec);
+  $('f-amount').value = ''; $('f-note').value = '';
+  if (date.slice(0,7) !== currentMonth){ currentMonth = date.slice(0,7); $('month-picker').value = currentMonth; }
+}
+
+/* ── 事件綁定與初始化 ──────────────── */
+function shiftMonth(d){
+  const [y, m] = currentMonth.split('-').map(Number);
+  const nd = new Date(y, m - 1 + d, 1);
+  currentMonth = nd.getFullYear() + '-' + String(nd.getMonth()+1).padStart(2,'0');
+  $('month-picker').value = currentMonth;
+  render();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  $('month-picker').value = currentMonth;
+  $('f-date').value = new Date().toISOString().slice(0,10);
+  fillSelect($('f-account'), ACCOUNTS);
+  fillSelect($('f-to'), ACCOUNTS);
+  setKind('expense');
+
+  $('month-picker').addEventListener('change', e => { if (e.target.value){ currentMonth = e.target.value; render(); } });
+  $('prev-month').addEventListener('click', () => shiftMonth(-1));
+  $('next-month').addEventListener('click', () => shiftMonth(1));
+  $('kind-toggle').addEventListener('click', e => { if (e.target.dataset.kind) setKind(e.target.dataset.kind); });
+  $('btn-add').addEventListener('click', addRecord);
+  $('record-body').addEventListener('click', e => {
+    const id = e.target.dataset.del;
+    if (id && confirm('確定刪除這筆記錄？')) store.remove(id);
+  });
+  $('btn-xlsx').addEventListener('click', exportXlsx);
+  $('btn-pdf').addEventListener('click', exportPdf);
+
+  if (FIREBASE_CONFIG){
+    store = FireStore;
+    $('btn-auth').addEventListener('click', () => FireStore.toggleAuth());
+  } else {
+    store = LocalStore;
+    $('btn-auth').style.display = 'none';
+  }
+  store.init(list => { records = list; render(); });
+});
+</script>
+</body>
+</html>
